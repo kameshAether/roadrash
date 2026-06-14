@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road Rash - Motorcycle Racing Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            border: 4px solid #e94560;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(233, 69, 96, 0.5);
+        }
+        #gameCanvas {
+            display: block;
+            background: linear-gradient(to bottom, #87CEEB 0%, #87CEEB 30%, #228B22 30%, #228B22 100%);
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 16px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        #ui div {
+            margin: 5px 0;
+        }
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 20;
+        }
+        #startScreen h1, #gameOverScreen h1 {
+            font-size: 48px;
+            color: #e94560;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0,0,0,1);
+        }
+        #startScreen p, #gameOverScreen p {
+            font-size: 18px;
+            margin: 10px 0;
+        }
+        .btn {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 20px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: scale(1.1);
+        }
+        #controls {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <div id="scoreDisplay">Score: 0</div>
+            <div id="speedDisplay">Speed: 0 km/h</div>
+            <div id="distanceDisplay">Distance: 0 m</div>
+            <div id="livesDisplay">Lives: 3</div>
+        </div>
+        <div id="startScreen">
+            <h1>ROAD RASH</h1>
+            <p>Motorcycle Racing Championship</p>
+            <div id="controls">
+                <p>↑ Accelerate | ↓ Brake</p>
+                <p>← → Steer</p>
+                <p>Avoid obstacles and other racers!</p>
+            </div>
+            <button class="btn" id="startBtn">START RACE</button>
+        </div>
+        <div id="gameOverScreen" style="display: none;">
+            <h1>GAME OVER</h1>
+            <p id="finalScore">Final Score: 0</p>
+            <p id="finalDistance">Distance: 0 m</p>
+            <button class="btn" id="restartBtn">RACE AGAIN</button>
+        </div>
+    </div>
+
+    <script>
+        // Audio Context for procedural sound effects
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new AudioContext();
+            }
+        }
+
+        function playSound(type) {
+            if (!audioCtx) return;
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            switch(type) {
+                case 'engine':
+                    oscillator.frequency.value = 100 + Math.random() * 50;
+                    oscillator.type = 'sawtooth';
+                    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    oscillator.start(audioCtx.currentTime);
+                    oscillator.stop(audioCtx.currentTime + 0.1);
+                    break;
+                case 'crash':
+                    oscillator.frequency.value = 150;
+                    oscillator.type = 'square';
+                    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                    oscillator.start(audioCtx.currentTime);
+                    oscillator.stop(audioCtx.currentTime + 0.3);
+                    break;
+                case 'score':
+                    oscillator.frequency.value = 800;
+                    oscillator.type = 'sine';
+                    gainNode.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+                    oscillator.start(audioCtx.currentTime);
+                    oscillator.stop(audioCtx.currentTime + 0.2);
+                    break;
+                case 'horn':
+                    oscillator.frequency.value = 400;
+                    oscillator.type = 'square';
+                    gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                    oscillator.start(audioCtx.currentTime);
+                    oscillator.stop(audioCtx.currentTime + 0.4);
+                    break;
+            }
+        }
+
+        // Game constants
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const ROAD_WIDTH = 600;
+        const ROAD_X = (canvas.width - ROAD_WIDTH) / 2;
+        const LANE_WIDTH = ROAD_WIDTH / 5;
+        
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let distance = 0;
+        let lives = 3;
+        let speed = 0;
+        const MAX_SPEED = 300;
+        const ACCELERATION = 2;
+        const BRAKING = 3;
+        const FRICTION = 0.5;
+        
+        // Player motorcycle
+        const player = {
+            x: canvas.width / 2,
+            y: 480,
+            width: 50,
+            height: 80,
+            speed: 0,
+            steerAngle: 0
+        };
+
+        // Other racers and obstacles
+        let opponents = [];
+        let obstacles = [];
+        let roadMarkers = [];
+        
+        // Input handling
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if (keys.hasOwnProperty(e.code)) {
+                keys[e.code] = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (keys.hasOwnProperty(e.code)) {
+                keys[e.code] = false;
+            }
+        });
+
+        // Initialize road markers
+        function initRoadMarkers() {
+            roadMarkers = [];
+            for (let i = 0; i < 20; i++) {
+                roadMarkers.push({
+                    y: i * 40
+                });
+            }
+        }
+
+        // Spawn opponent
+        function spawnOpponent() {
+            const lane = Math.floor(Math.random() * 5);
+            const opponent = {
+                x: ROAD_X + lane * LANE_WIDTH + LANE_WIDTH / 2,
+                y: -100,
+                width: 50,
+                height: 80,
+                speed: 100 + Math.random() * 100,
+                color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                type: 'opponent'
+            };
+            opponents.push(opponent);
+        }
+
+        // Spawn obstacle
+        function spawnObstacle() {
+            const lane = Math.floor(Math.random() * 5);
+            const obstacle = {
+                x: ROAD_X + lane * LANE_WIDTH + LANE_WIDTH / 2,
+                y: -100,
+                width: 40,
+                height: 40,
+                type: 'obstacle'
+            };
+            obstacles.push(obstacle);
+        }
+
+        // Draw motorcycle sprite
+        function drawMotorcycle(x, y, color, isPlayer) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(-25, -30, 50, 80);
+            
+            // Body
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 20, 40, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Handlebars
+            ctx.fillStyle = '#666';
+            ctx.fillRect(-25, 20, 50, 8);
+            
+            // Rider head
+            ctx.fillStyle = isPlayer ? '#ffcc00' : '#fff';
+            ctx.beginPath();
+            ctx.arc(0, -30, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Helmet detail
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, -30, 15, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Wheels
+            ctx.fillStyle = '#222';
+            ctx.beginPath();
+            ctx.ellipse(-15, 35, 8, 15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(15, 35, 8, 15, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        // Draw obstacle
+        function drawObstacle(x, y) {
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Rock/boulder
+            ctx.fillStyle = '#696969';
+            ctx.beginPath();
+            ctx.arc(0, 0, 20, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.arc(-5, -5, 12, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+
+        // Draw road
+        function drawRoad() {
+            // Grass background
+            ctx.fillStyle = '#228B22';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Road
+            ctx.fillStyle = '#333';
+            ctx.fillRect(ROAD_X, 0, ROAD_WIDTH, canvas.height);
+            
+            // Road edges
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(ROAD_X - 5, 0, 5, canvas.height);
+            ctx.fillRect(ROAD_X + ROAD_WIDTH, 0, 5, canvas.height);
+            
+            // Lane markers
+            ctx.fillStyle = '#fff';
+            roadMarkers.forEach(marker => {
+                for (let i = 1; i < 5; i++) {
+                    ctx.fillRect(
+                        ROAD_X + i * LANE_WIDTH - 2,
+                        marker.y,
+                        4,
+                        20
+                    );
+                }
+            });
+            
+            // Update markers
+            roadMarkers.forEach(marker => {
+                marker.y += speed / 10;
+                if (marker.y > canvas.height) {
+                    marker.y = -40;
+                }
+            });
+        }
+
+        // Collision detection
+        function checkCollision(obj1, obj2) {
+            const dx = obj1.x - obj2.x;
+            const dy = obj1.y - obj2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return distance < (obj1.width / 2 + obj2.width / 2);
+        }
+
+        // Update player
+        function updatePlayer() {
+            // Acceleration/Braking
+            if (keys.ArrowUp) {
+                speed += ACCELERATION;
+                if (speed % 50 < ACCELERATION) {
+                    playSound('engine');
+                }
+            } else if (keys.ArrowDown) {
+                speed -= BRAKING;
+            } else {
+                speed -= FRICTION;
+            }
+            
+            // Clamp speed
+            speed = Math.max(0, Math.min(MAX_SPEED, speed));
+            
+            // Steering
+            if (speed > 0) {
+                const steerForce = 3 * (speed / MAX_SPEED);
+                if (keys.ArrowLeft) {
+                    player.x -= steerForce;
+                }
+                if (keys.ArrowRight) {
+                    player.x += steerForce;
+                }
+            }
+            
+            // Keep player on road
+            player.x = Math.max(ROAD_X + 30, Math.min(ROAD_X + ROAD_WIDTH - 30, player.x));
+            
+            // Update distance
+            distance += speed / 1000;
+            
+            // Score based on distance and speed
+            score += Math.floor(speed / 100);
+        }
+
+        // Update opponents
+        function updateOpponents() {
+            opponents.forEach((opp, index) => {
+                opp.y += (speed - opp.speed) / 20;
+                
+                // Check collision with player
+                if (checkCollision(player, opp)) {
+                    playSound('crash');
+                    lives--;
+                    speed *= 0.5;
+                    opponents.splice(index, 1);
+                }
+                
+                // Remove off-screen opponents
+                if (opp.y > canvas.height + 100 || opp.y < -200) {
+                    opponents.splice(index, 1);
+                    if (opp.y > canvas.height) {
+                        score += 100;
+                        playSound('score');
+                    }
+                }
+            });
+        }
+
+        // Update obstacles
+        function updateObstacles() {
+            obstacles.forEach((obs, index) => {
+                obs.y += speed / 20;
+                
+                // Check collision with player
+                if (checkCollision(player, obs)) {
+                    playSound('crash');
+                    lives--;
+                    speed *= 0.3;
+                    obstacles.splice(index, 1);
+                }
+                
+                // Remove off-screen obstacles
+                if (obs.y > canvas.height + 100 || obs.y < -200) {
+                    obstacles.splice(index, 1);
+                }
+            });
+        }
+
+        // Spawn entities
+        let spawnTimer = 0;
+        function spawnEntities() {
+            spawnTimer++;
+            if (spawnTimer > 60 - Math.min(speed / 5, 40)) {
+                spawnTimer = 0;
+                if (Math.random() < 0.7) {
+                    spawnOpponent();
+                } else {
+                    spawnObstacle();
+                }
+            }
+        }
+
+        // Update UI
+        function updateUI() {
+            document.getElementById('scoreDisplay').textContent = `Score: ${score}`;
+            document.getElementById('speedDisplay').textContent = `Speed: ${Math.floor(speed)} km/h`;
+            document.getElementById('distanceDisplay').textContent = `Distance: ${Math.floor(distance)} m`;
+            document.getElementById('livesDisplay').textContent = `Lives: ${lives}`;
+        }
+
+        // Main game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw road
+            drawRoad();
+            
+            // Update game objects
+            updatePlayer();
+            updateOpponents();
+            updateObstacles();
+            spawnEntities();
+            
+            // Draw obstacles
+            obstacles.forEach(obs => drawObstacle(obs.x, obs.y));
+            
+            // Draw opponents
+            opponents.forEach(opp => {
+                drawMotorcycle(opp.x, opp.y, opp.color, false);
+            });
+            
+            // Draw player
+            drawMotorcycle(player.x, player.y, '#e94560', true);
+            
+            // Update UI
+            updateUI();
+            
+            // Check game over
+            if (lives <= 0) {
+                gameOver();
+                return;
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Start game
+        function startGame() {
+            initAudio();
+            gameRunning = true;
+            score = 0;
+            distance = 0;
+            lives = 3;
+            speed = 0;
+            player.x = canvas.width / 2;
+            opponents = [];
+            obstacles = [];
+            initRoadMarkers();
+            
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('gameOverScreen').style.display = 'none';
+            
+            gameLoop();
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            document.getElementById('finalScore').textContent = `Final Score: ${score}`;
+            document.getElementById('finalDistance').textContent = `Distance: ${Math.floor(distance)} m`;
+            document.getElementById('gameOverScreen').style.display = 'flex';
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        // Initial render
+        initRoadMarkers();
+        drawRoad();
+        drawMotorcycle(player.x, player.y, '#e94560', true);
+    </script>
+</body>
+</html>
