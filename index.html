@@ -182,11 +182,11 @@ let masterVol = 0.6;
 
 // ==================== DATA ====================
 const BIKES = {
-  cro:   { name: 'Cro-Magnon', price: 0, speed: 1.0, arm: 1.0, cost: 0 },
-  gp:    { name: 'Grand Prix', price: 800, speed: 1.3, arm: 0.7, cost: 800 },
-  superb: { name: 'Superbike', price: 1200, speed: 1.2, arm: 1.2, cost: 1200 },
-  muscle: { name: 'Muscle Bike', price: 2000, speed: 0.9, arm: 1.8, cost: 2000 },
-  dragon: { name: 'Dragon R', price: 3500, speed: 1.5, arm: 1.4, cost: 3500 }
+  cro:   { name: 'Cro-Magnon', price: 0, speed: 1.0, arm: 1.0, cost: 0, color: '#ff3333' },
+  gp:    { name: 'Grand Prix', price: 800, speed: 1.3, arm: 0.7, cost: 800, color: '#00aaff' },
+  superb: { name: 'Superbike', price: 1200, speed: 1.2, arm: 1.2, cost: 1200, color: '#44cc44' },
+  muscle: { name: 'Muscle Bike', price: 2000, speed: 0.9, arm: 1.8, cost: 2000, color: '#cc44cc' },
+  dragon: { name: 'Dragon R', price: 3500, speed: 1.5, arm: 1.4, cost: 3500, color: '#ff8800' }
 };
 
 const TRACKS = [
@@ -730,7 +730,7 @@ function update(dt) {
   if (R.warning > 60 && G.frame % 30 === 0) sfx('crowd');
 
   // Finish check
-  if (R.distance >= trk.length && !G.resultShown) {
+  if (R.distance >= R.track.length && !G.resultShown) {
     G.resultShown = true; G.running = false;
     endRace();
   }
